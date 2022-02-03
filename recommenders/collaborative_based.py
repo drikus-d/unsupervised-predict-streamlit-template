@@ -30,20 +30,33 @@
 # Script dependencies
 import pandas as pd
 import numpy as np
+import scipy as sp
 import pickle
 import copy
 from surprise import Reader, Dataset
-from surprise import SVD, NormalPredictor, BaselineOnly, KNNBasic, NMF
+from surprise import SVD #, NormalPredictor, BaselineOnly, KNNBasic, NMF
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.feature_extraction.text import CountVectorizer
+import pathlib
 
 # Importing data
 movies_df = pd.read_csv('resources/data/movies.csv',sep = ',')
-ratings_df = pd.read_csv('resources/data/ratings.csv')
+ratings_1 = pd.read_csv('resources/data/ratings_1.csv')
+ratings_2 = pd.read_csv('resources/data/ratings_2.csv')
+ratings_3 = pd.read_csv('resources/data/ratings_3.csv')
+ratings_4 = pd.read_csv('resources/data/ratings_4.csv')
+ratings_df = ratings_1.append(ratings_2).append(ratings_3).append(ratings_4)
+
+# Limit the dataset to 10 000 rows for initial app
 ratings_df.drop(['timestamp'], axis=1,inplace=True)
 
 # We make use of an SVD model trained on a subset of the MovieLens 10k dataset.
-model=pickle.load(open('resources/models/SVD.pkl', 'rb'))
+# Github has a restriction of uploaded file sizes, thus two models are included,
+# SVD_mode.pkl is the model train on the complete dataset, and SVD_model_small
+# is a model train on a subset of the data. The code below will check if the large
+# model file exists else it will the small model/
+
+model=pickle.load(open('resources/models/SVD_model_small.pkl', 'rb'))
 
 def prediction_item(item_id):
     """Map a given favourite movie to users within the
@@ -118,31 +131,80 @@ def collab_model(movie_list,top_n=10):
 
     """
 
-    indices = pd.Series(movies_df['title'])
-    movie_ids = pred_movies(movie_list)
-    df_init_users = ratings_df[ratings_df['userId']==movie_ids[0]]
-    for i in movie_ids :
-        df_init_users=df_init_users.append(ratings_df[ratings_df['userId']==i])
-    # Getting the cosine similarity matrix
-    cosine_sim = cosine_similarity(np.array(df_init_users), np.array(df_init_users))
+    top_n=10
+    new_df = movies_df.copy()
+    new_df.set_index('movieId',inplace=True)
+    
+    indices = pd.Series(new_df['title'])
+    users_ids = pred_movies(movie_list)
+    
+    # Get movie IDs and ratings for top users
+    df_init_users = ratings_df[ratings_df['userId']==users_ids[0]]
+    for i in users_ids[1:]:
+        df_init_users = df_init_users.append(ratings_df[ratings_df['userId']==i])
+    
+    # Include predictions for chosen movies
+    for j in movie_list:
+        a = pd.DataFrame(prediction_item(j))
+        for i in set(df_init_users['userId']):
+            mid = indices[indices == j].index[0]
+            est = a['est'][a['uid']==i].values[0]
+            df_init_users = df_init_users.append(pd.Series([int(i),int(mid),est], index=['userId','movieId','rating']), ignore_index=True)
+    
+    # Remove duplicate entries
+    df_init_users.drop_duplicates(inplace=True)
+    
+    #Create pivot table
+    util_matrix = df_init_users.pivot_table(index=['userId'], columns=['movieId'], values='rating')
+    
+    # Fill Nan values with 0's and save the utility matrix in scipy's sparse matrix format
+    util_matrix.fillna(0, inplace=True)
+    util_matrix_sparse = sp.sparse.csr_matrix(util_matrix.values)
+    
+    # Compute the similarity matrix using the cosine similarity metric
+    user_similarity = cosine_similarity(util_matrix_sparse.T)
+    
+    # Save the matrix as a dataframe to allow for easier indexing
+    user_sim_df = pd.DataFrame(user_similarity, index = util_matrix.columns, columns = util_matrix.columns)
+    user_similarity = cosine_similarity(np.array(df_init_users), np.array(df_init_users))
+    user_sim_df = pd.DataFrame(user_similarity, index = df_init_users['movieId'].values.astype(int), columns = df_init_users['movieId'].values.astype(int))
+    
+    # Remove duplicate rows from matrix
+    user_sim_df = user_sim_df.loc[~user_sim_df.index.duplicated(keep='first')]
+    
+    # Transpose matrix
+    user_sim_df = user_sim_df.T
+    
+    # Find IDs of chosen load_movie_titles
     idx_1 = indices[indices == movie_list[0]].index[0]
     idx_2 = indices[indices == movie_list[1]].index[0]
     idx_3 = indices[indices == movie_list[2]].index[0]
+    
     # Creating a Series with the similarity scores in descending order
-    rank_1 = cosine_sim[idx_1]
-    rank_2 = cosine_sim[idx_2]
-    rank_3 = cosine_sim[idx_3]
+    distances_1 = user_sim_df[idx_1]
+    distances_2 = user_sim_df[idx_2]
+    distances_3 = user_sim_df[idx_3]
+    
     # Calculating the scores
-    score_series_1 = pd.Series(rank_1).sort_values(ascending = False)
-    score_series_2 = pd.Series(rank_2).sort_values(ascending = False)
-    score_series_3 = pd.Series(rank_3).sort_values(ascending = False)
-     # Appending the names of movies
-    listings = score_series_1.append(score_series_1).append(score_series_3).sort_values(ascending = False)
-    recommended_movies = []
+    sim_score_1 = pd.Series(distances_1).sort_values(ascending = False)
+    sim_score_2 = pd.Series(distances_2).sort_values(ascending = False)
+    sim_score_3 = pd.Series(distances_3).sort_values(ascending = False)
+    
+    # Appending the names of movies
+    sim_score_list = sim_score_1.append(sim_score_2).append(sim_score_3).sort_values(ascending = False)
+    
     # Choose top 50
-    top_50_indexes = list(listings.iloc[1:50].index)
+    top_50_indexes = list(sim_score_list.iloc[1:50].index)
+    
     # Removing chosen movies
-    top_indexes = np.setdiff1d(top_50_indexes,[idx_1,idx_2,idx_3])
-    for i in top_indexes[:top_n]:
-        recommended_movies.append(list(movies_df['title'])[i])
+    indexes = np.setdiff1d(top_50_indexes,[idx_1,idx_2,idx_3])
+    
+    # Get titles of recommended movies
+    recommended_movies = []
+    for i in indexes[:top_n]:
+        recommended_movies.append(list(movies_df[movies_df['movieId']==i]['title']))
+    
+    # Return list of movies
+    recommended_movies = [val for sublist in recommended_movies for val in sublist]
     return recommended_movies
+

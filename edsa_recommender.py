@@ -27,6 +27,7 @@
 """
 # Streamlit dependencies
 import streamlit as st
+import streamlit.components.v1 as components
 
 # Data handling dependencies
 import pandas as pd
@@ -37,8 +38,16 @@ from utils.data_loader import load_movie_titles
 from recommenders.collaborative_based import collab_model
 from recommenders.content_based import content_model
 
-# Data Loading
+#------------------------------------------------------------------------#
+#---------------------------Data Loading---------------------------------#
+#------------------------------------------------------------------------#
+
 title_list = load_movie_titles('resources/data/movies.csv')
+movies = pd.read_csv('resources/data/movies.csv')
+
+#------------------------------------------------------------------------#
+#----------------------------Functions-----------------------------------#
+#------------------------------------------------------------------------#
 
 # App declaration
 def main():
@@ -97,15 +106,10 @@ def main():
                               We'll need to fix it!")
 
 
-    # -------------------------------------------------------------------
+    # -----------------------------------------------------------------------#
+    # -------------------SAFE FOR ALTERING/EXTENSION ------------------------#
+    # -----------------------------------------------------------------------#
 
-    # ------------- SAFE FOR ALTERING/EXTENSION -------------------
-    if page_selection == "Solution Overview":
-        st.title("Solution Overview")
-        st.write("Describe your winning approach on this page")
-
-    # You may want to add more sections here for aspects such as an EDA,
-    # or to provide your business pitch.
 
 
 if __name__ == '__main__':
