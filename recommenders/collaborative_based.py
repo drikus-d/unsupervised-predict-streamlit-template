@@ -40,23 +40,12 @@ from sklearn.feature_extraction.text import CountVectorizer
 import pathlib
 
 # Importing data
-movies_df = pd.read_csv('resources/data/movies.csv',sep = ',')
-ratings_1 = pd.read_csv('resources/data/ratings_1.csv')
-ratings_2 = pd.read_csv('resources/data/ratings_2.csv')
-ratings_3 = pd.read_csv('resources/data/ratings_3.csv')
-ratings_4 = pd.read_csv('resources/data/ratings_4.csv')
-ratings_df = ratings_1.append(ratings_2).append(ratings_3).append(ratings_4)
+movies_df = pd.read_csv('../unsupervised_data/unsupervised_movie_data/movies.csv')
+ratings_df = pd.read_csv('../unsupervised_data/unsupervised_movie_data/train.csv')
 
-# Limit the dataset to 10 000 rows for initial app
+
 ratings_df.drop(['timestamp'], axis=1,inplace=True)
-
-# We make use of an SVD model trained on a subset of the MovieLens 10k dataset.
-# Github has a restriction of uploaded file sizes, thus two models are included,
-# SVD_mode.pkl is the model train on the complete dataset, and SVD_model_small
-# is a model train on a subset of the data. The code below will check if the large
-# model file exists else it will the small model/
-
-model=pickle.load(open('resources/models/SVD_model_small.pkl', 'rb'))
+model=pickle.load(open('resources/models/SVDpp_model.pkl', 'rb'))
 
 def prediction_item(item_id):
     """Map a given favourite movie to users within the
@@ -207,4 +196,3 @@ def collab_model(movie_list,top_n=10):
     # Return list of movies
     recommended_movies = [val for sublist in recommended_movies for val in sublist]
     return recommended_movies
-
